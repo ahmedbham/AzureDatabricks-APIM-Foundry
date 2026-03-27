@@ -39,17 +39,16 @@ import json
 import requests
 
 cred = ManagedIdentityCredential()  # uses the identity available on this compute
-token = cred.get_token("api://aa3ac609-d55c-49e0-a89c-6131bb1171b4/.default").token
+token = cred.get_token("api://{APP_ID}/.default").token
 
-# apim_url = "https://two-adb-apim.azure-api.net/chat/completions"  # e.g. /myapi/endpoint
-apim_url = "https://adb-apim-bham.azure-api.net/foundry/chat/completions"
+apim_url = "https://{your-apim-name}.azure-api.net/foundry/chat/completions"
 headers = {
   "Authorization": f"Bearer {token}",
   "Content-Type": "application/json"
 }
 
 data = {
-    "model": "agent-model", 
+    "model": "{model-name}", 
     "messages": [
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "what are the top 3 most popular colors"}
@@ -79,13 +78,13 @@ except Exception as e:
 ### Create an Azure AD App Registration for APIM
 1. In the Azure portal, navigate to Azure Active Directory --> App registrations --> New registration.
 2. Name the app (e.g., "APIM Access for Databricks") and register it.
-3. Set "Application ID URI" to a "api://{client-id}" where {client-id} is the Application (client) ID of the app registration. This will be used as the audience for the token request from Databricks.
-3. After registration, note the Application (client) ID and Directory (tenant) ID.  
-4. Create App Roles for the app registration:
+3. Set "Application ID URI" to a "api://{client-id}" where {client-id} is the Application (client) ID ("APP_ID") of the app registration. This will be used as the audience for the token request from Databricks.
+4. Note down the "Application (client) ID" ("APP_ID") and "Directory (tenant) ID" ("TENANT_ID") for the app registration created.
+5. Create App Roles for the app registration:
    - Under the app registration, go to "App roles" --> "Create app role".
    - Name the role (e.g., "MyApi.Invoke"), set allowed member types to "Application", and provide a value (e.g., "MyApi.Invoke") and a Descrption (e.g. "allow ADB MI to access APIM API").
-   - Save the app role ("APP_ROLE_ID").Note down the App Role ID for the role created.
-5. Under "Enterprises applications", find the app registration created in step 1 and click on it.
+   - Note down the app role value ("APP_ROLE_VALUE") and the App Role ID ("APP_ROLE_ID") for the role created.
+6. Under "Enterprises applications", find the app registration created in step 1 and click on it.
    - Note down the "Object ID" ("API_SP_ID").
 ### Assign the App Role to the Azure Databricks Workspace Managed Identity
 1. Option A
@@ -123,16 +122,16 @@ except Exception as e:
 ```xml
 <!-- 1️⃣ Validate Entra ID issued JWT -->
         <validate-jwt header-name="Authorization" failed-validation-httpcode="401" failed-validation-error-message="Unauthorized" require-scheme="Bearer" output-token-variable-name="jwt">
-            <openid-config url="https://login.microsoftonline.com/16b3c013-d300-468d-ac64-7eda0820b6d3/v2.0/.well-known/openid-configuration" />
+            <openid-config url="https://login.microsoftonline.com/{TENANT_ID}/v2.0/.well-known/openid-configuration" />
             <audiences>
-                <audience>aa3ac609-d55c-49e0-a89c-6131bb1171b4</audience>
+                <audience>{APP_ID}</audience>
             </audiences>
             <issuers>
-                <issuer>https://login.microsoftonline.com/16b3c013-d300-468d-ac64-7eda0820b6d3/v2.0</issuer>
+                <issuer>https://login.microsoftonline.com/{TENANT_ID}/v2.0</issuer>
             </issuers>
             <required-claims>
                 <claim name="roles" match="any">
-                    <value>MyApi.Invoke</value>
+                    <value>{APP_ROLE_VALUE}</value>
                 </claim>
             </required-claims>
         </validate-jwt>
@@ -145,16 +144,16 @@ import json
 import requests
 
 cred = ManagedIdentityCredential()  # uses the identity available on this compute
-token = cred.get_token("api://aa3ac609-d55c-49e0-a89c-6131bb1171b4/.default").token
+token = cred.get_token("api://{APP_ID}/.default").token
 
-apim_url = "https://adb-apim-bham.azure-api.net/foundry/chat/completions"
+apim_url = "https://{your-apim-name}.azure-api.net/foundry/chat/completions"
 headers = {
   "Authorization": f"Bearer {token}",
   "Content-Type": "application/json"
 }
 
 data = {
-    "model": "agent-model", 
+    "model": "{model-name}", 
     "messages": [
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "what are the top 3 most popular colors"}
