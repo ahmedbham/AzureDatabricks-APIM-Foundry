@@ -1,5 +1,18 @@
 # Instructions for use
 
+## Architecture Diagram
+
+The architecture diagram is available as an editable draw.io file at [`diagrams/architecture.drawio`](diagrams/architecture.drawio).
+
+**Viewing:** Open in [draw.io](https://app.diagrams.net/) (web) or the draw.io VS Code extension. The diagram has three toggleable layers:
+- **Infrastructure Components** — VNets, subnets, Azure resources (APIM, Databricks, Foundry, Entra ID)
+- **Network Connectivity** — Private Endpoint connections and network injection
+- **Access Control** — Role assignments, app registrations, APIM inbound policies, and auth flow
+
+**Exporting to PNG/SVG:** In draw.io, go to *File → Export as → PNG/SVG*. Select "All Pages" and enable "Include a copy of my diagram" to keep it editable.
+
+---
+
 ## VNet
 1. Create a VNet with the following subnets:
    - `PE Subnet` (for Private Endpoint)

@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="2026-03-27T00:00:00.000Z" agent="draw.io" version="24.0.0" type="device">
+  <diagram id="architecture" name="Architecture">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <!-- Layer 1: Infrastructure Components -->
+        <mxCell id="1" value="Infrastructure Components" parent="0"/>
+        <!-- Layer 2: Network Connectivity -->
+        <mxCell id="2" value="Network Connectivity" parent="0"/>
+        <!-- Layer 3: Access Control -->
+        <mxCell id="3" value="Access Control" parent="0"/>
+
+        <!-- ============================================================ -->
+        <!-- LAYER 1 — INFRASTRUCTURE COMPONENTS                          -->
+        <!-- ============================================================ -->
+
+        <!-- Diagram Title -->
+        <mxCell id="5" value="Azure Databricks → APIM → Foundry Architecture" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="420" y="10" width="550" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- ——— External: Microsoft Entra ID ——— -->
+        <mxCell id="30" value="Microsoft Entra ID" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=img/lib/azure2/identity/Azure_Active_Directory.svg;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="100" y="70" width="65" height="65" as="geometry"/>
+        </mxCell>
+
+        <!-- ——— External: Foundry Account ——— -->
+        <mxCell id="31" value="Foundry Account" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=img/lib/azure2/ai_machine_learning/Cognitive_Services.svg;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1250" y="70" width="65" height="65" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== VNET-APIM ===== -->
+        <mxCell id="10" value="VNET-APIM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=top;fontStyle=1;fontSize=14;container=1;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="30" y="210" width="530" height="490" as="geometry"/>
+        </mxCell>
+
+        <!-- APIM-SUBNET -->
+        <mxCell id="11" value="APIM-SUBNET" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#90CAF9;verticalAlign=top;fontStyle=1;fontSize=11;container=1;collapsible=0;dashed=1;" vertex="1" parent="10">
+          <mxGeometry x="20" y="40" width="240" height="430" as="geometry"/>
+        </mxCell>
+
+        <!-- Azure API Management -->
+        <mxCell id="12" value="Azure API&#xa;Management" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=img/lib/azure2/integration/API_Management_Services.svg;fontSize=11;fontStyle=1;" vertex="1" parent="11">
+          <mxGeometry x="75" y="140" width="65" height="65" as="geometry"/>
+        </mxCell>
+
+        <!-- PE-SUBNET (VNET-APIM) -->
+        <mxCell id="13" value="PE-SUBNET" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#90CAF9;verticalAlign=top;fontStyle=1;fontSize=11;container=1;collapsible=0;dashed=1;" vertex="1" parent="10">
+          <mxGeometry x="280" y="40" width="230" height="430" as="geometry"/>
+        </mxCell>
+
+        <!-- Foundry Private Endpoint -->
+        <mxCell id="14" value="Foundry&#xa;Private Endpoint" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=img/lib/azure2/networking/Private_Endpoint.svg;fontSize=10;" vertex="1" parent="13">
+          <mxGeometry x="80" y="150" width="50" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== VNET-DATABRICKS ===== -->
+        <mxCell id="20" value="VNET-DATABRICKS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=top;fontStyle=1;fontSize=14;container=1;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="650" y="210" width="730" height="490" as="geometry"/>
+        </mxCell>
+
+        <!-- DATABRICKS-PRIVATE-SUBNET -->
+        <mxCell id="21" value="DATABRICKS-PRIVATE-SUBNET&#xa;(Control Plane)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#90CAF9;verticalAlign=top;fontStyle=1;fontSize=10;container=1;collapsible=0;dashed=1;" vertex="1" parent="20">
+          <mxGeometry x="20" y="40" width="210" height="430" as="geometry"/>
+        </mxCell>
+
+        <!-- Azure Databricks -->
+        <mxCell id="22" value="Azure&#xa;Databricks" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=img/lib/azure2/analytics/Azure_Databricks.svg;fontSize=11;fontStyle=1;" vertex="1" parent="21">
+          <mxGeometry x="60" y="130" width="65" height="65" as="geometry"/>
+        </mxCell>
+
+        <!-- DATABRICKS-PUBLIC-SUBNET -->
+        <mxCell id="23" value="DATABRICKS-PUBLIC-SUBNET&#xa;(Worker Nodes)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#90CAF9;verticalAlign=top;fontStyle=1;fontSize=10;container=1;collapsible=0;dashed=1;" vertex="1" parent="20">
+          <mxGeometry x="250" y="40" width="210" height="430" as="geometry"/>
+        </mxCell>
+
+        <!-- PE-SUBNET (VNET-DATABRICKS) -->
+        <mxCell id="25" value="PE-SUBNET" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#90CAF9;verticalAlign=top;fontStyle=1;fontSize=11;container=1;collapsible=0;dashed=1;" vertex="1" parent="20">
+          <mxGeometry x="480" y="40" width="230" height="430" as="geometry"/>
+        </mxCell>
+
+        <!-- APIM Private Endpoint -->
+        <mxCell id="26" value="APIM&#xa;Private Endpoint" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=img/lib/azure2/networking/Private_Endpoint.svg;fontSize=10;" vertex="1" parent="25">
+          <mxGeometry x="80" y="150" width="50" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- ——— Legend ——— -->
+        <mxCell id="35" value="&lt;b&gt;Legend&lt;/b&gt;&lt;hr size=&quot;1&quot;&gt;&lt;span style=&quot;color:#6c8ebf&quot;&gt;■&lt;/span&gt; Blue containers = VNets &amp;amp; Subnets&lt;br&gt;&lt;span style=&quot;color:#2E7D32&quot;&gt;- - -&lt;/span&gt; Green dashed = Network / PE connections&lt;br&gt;&lt;span style=&quot;color:#E65100&quot;&gt;- - -&lt;/span&gt; Orange dashed = Access Control&lt;br&gt;&lt;span style=&quot;color:#7B1FA2&quot;&gt;———&lt;/span&gt; Purple solid = Auth flow" style="text;html=1;strokeColor=#999999;fillColor=#f9f9f9;align=left;verticalAlign=top;whiteSpace=wrap;rounded=1;fontSize=10;fontColor=#333333;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="30" y="730" width="260" height="110" as="geometry"/>
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- LAYER 2 — NETWORK CONNECTIVITY                               -->
+        <!-- ============================================================ -->
+
+        <!-- Network Injection annotation next to APIM -->
+        <mxCell id="42" value="&lt;i&gt;Network Injected&lt;/i&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#2E7D32;fontStyle=2;strokeColor=none;fillColor=none;" vertex="1" parent="2">
+          <mxGeometry x="85" y="530" width="110" height="30" as="geometry"/>
+        </mxCell>
+
+        <!-- PE: Foundry Account → Foundry PE in VNET-APIM / PE-SUBNET -->
+        <mxCell id="40" value="Private Endpoint" style="rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2E7D32;strokeWidth=2;dashed=1;dashPattern=8 8;fontSize=10;fontColor=#2E7D32;labelBackgroundColor=#ffffff;edgeStyle=orthogonalEdgeStyle;curved=1;" edge="1" source="31" target="14" parent="2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- PE: APIM → APIM PE in VNET-DATABRICKS / PE-SUBNET -->
+        <mxCell id="41" value="Private Endpoint" style="rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2E7D32;strokeWidth=2;dashed=1;dashPattern=8 8;fontSize=10;fontColor=#2E7D32;labelBackgroundColor=#ffffff;edgeStyle=orthogonalEdgeStyle;curved=1;" edge="1" source="12" target="26" parent="2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Databricks provisioned into both subnets -->
+        <mxCell id="43" value="Provisioned" style="rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#1565C0;strokeWidth=1;dashed=1;fontSize=9;fontColor=#1565C0;labelBackgroundColor=#ffffff;edgeStyle=orthogonalEdgeStyle;" edge="1" source="22" target="23" parent="2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- LAYER 3 — ACCESS CONTROL                                     -->
+        <!-- ============================================================ -->
+
+        <!-- Role Assignment: APIM Managed Identity → AI User Role on Foundry -->
+        <mxCell id="50" value="APIM MI assigned AI User Role" style="rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#E65100;strokeWidth=2;dashed=1;dashPattern=4 4;fontSize=10;fontColor=#E65100;labelBackgroundColor=#ffffff;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=1;entryDx=0;entryDy=0;" edge="1" source="12" target="31" parent="3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="157" y="175"/>
+              <mxPoint x="1250" y="175"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- App Registration: Entra ID → Databricks MI for APIM API auth -->
+        <mxCell id="52" value="App Registration (Databricks MI)" style="rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#E65100;strokeWidth=2;dashed=1;dashPattern=4 4;fontSize=10;fontColor=#E65100;labelBackgroundColor=#ffffff;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="30" target="22" parent="3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="762" y="102"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Auth Flow: Databricks → APIM (jwt token via PE) -->
+        <mxCell id="55" value="jwt token →" style="rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#7B1FA2;strokeWidth=2;fontSize=10;fontColor=#7B1FA2;labelBackgroundColor=#ffffff;edgeStyle=orthogonalEdgeStyle;" edge="1" source="22" target="12" parent="3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="610" y="520"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Auth Flow: APIM → Foundry Account (MI token for cognitiveservices) -->
+        <mxCell id="56" value="MI token (cognitiveservices) →" style="rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#7B1FA2;strokeWidth=2;fontSize=10;fontColor=#7B1FA2;labelBackgroundColor=#ffffff;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="14" target="31" parent="3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="420" y="155"/>
+              <mxPoint x="1250" y="155"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- APIM Inbound Policies annotation box -->
+        <mxCell id="54" value="&lt;b&gt;APIM Inbound Policies&lt;/b&gt;&lt;hr size=&quot;1&quot;&gt;1. &lt;b&gt;validate-jwt&lt;/b&gt;: Validates Databricks MI token,&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;checks app role assignment&lt;br&gt;2. &lt;b&gt;authentication-managed-identity&lt;/b&gt;:&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;Acquires Foundry token (cognitiveservices)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;fontSize=10;align=left;verticalAlign=top;spacing=6;" vertex="1" parent="3">
+          <mxGeometry x="350" y="730" width="310" height="100" as="geometry"/>
+        </mxCell>
+
+        <!-- Auth Flow Summary annotation box -->
+        <mxCell id="57" value="&lt;b&gt;Auth Flow Summary&lt;/b&gt;&lt;hr size=&quot;1&quot;&gt;Databricks MI → jwt token → APIM validates jwt&lt;br&gt;→ APIM MI acquires cognitiveservices token&lt;br&gt;→ calls Foundry Account backend" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#7B1FA2;fontSize=10;align=left;verticalAlign=top;spacing=6;" vertex="1" parent="3">
+          <mxGeometry x="700" y="730" width="310" height="80" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
