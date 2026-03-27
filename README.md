@@ -178,3 +178,77 @@ except requests.exceptions.HTTPError as e:
 except Exception as e:
     print(f"An unexpected error occurred: {e}")
 ```
+
+## Authorizing call to APIM with a Service Principal 
+### Create an Azure AD App Registration for the Service Principal ('adb-client-app' in this example)
+### Assign the App Role to the Service Principal
+1. Get CALLER_OID for adb-client-app (client service principal object id)
+```bash
+CALLER_OID=$(az ad sp list \
+  --filter "displayName eq 'adb-client-app'" \
+  --query "[0].id" -o tsv)
+echo $CALLER_OID
+```
+2. Get API_SP_OID for apim-api-app (resource/API service principal object id)
+```bash
+API_SP_OID=$(az ad sp list \
+  --filter "displayName eq 'apim-api-app'" \
+  --query "[0].id" -o tsv)
+echo $API_SP_OID
+```
+3. Perform the app role assignment using the following command:
+```bash
+az rest \
+  --method POST \
+  --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$CALLER_OID/appRoleAssignments" \
+  --headers "Content-Type=application/json" \
+  --body "{
+    \"principalId\": \"$CALLER_OID\",
+    \"resourceId\": \"$API_SP_OID\",
+    \"appRoleId\": \"$APP_ROLE_ID\"
+  }"
+```
+### Test the setup by executing a notebook in Azure Databricks. 
+```python
+%pip install msal
+dbutils.library.restartPython()
+import msal
+import requests
+
+# -----------------------------
+# REQUIRED SETTINGS
+# -----------------------------
+TENANT_ID = "<your-tenant-id>"  # GUID or contoso.onmicrosoft.com
+ADB_CLIENT_APP_ID = "<adb-client-app-client-id>"
+APIM_API_APP_CLIENT_ID = "<apim-api-app-client-id>"
+
+# Your requested audience/scope (client-credentials uses ".default")
+SCOPE = [f"api://{APIM_API_APP_CLIENT_ID}/.default"]  # must be a list for MSAL
+
+# Databricks secrets (recommended)
+# Store your client secret in a secret scope/key
+CLIENT_SECRET = dbutils.secrets.get(scope="<scope-name>", key="<adb-client-app-client-secret-key>")
+
+# Authority must be https://login.microsoftonline.com/{tenant}
+AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
+
+# -----------------------------
+# MSAL CONFIDENTIAL CLIENT
+# -----------------------------
+app = msal.ConfidentialClientApplication(
+    client_id=ADB_CLIENT_APP_ID,
+    authority=AUTHORITY,
+    client_credential=CLIENT_SECRET
+)
+
+# Acquire app-only token
+result = app.acquire_token_for_client(scopes=SCOPE)
+
+if "access_token" not in result:
+    raise Exception(
+        f"Token acquisition failed: {result.get('error')} - {result.get('error_description')}"
+    )
+
+access_token = result["access_token"]
+print("✅ Got access token (length):", len(access_token))
+```
