@@ -30,7 +30,9 @@ The architecture diagram is available as an editable draw.io file at [`diagrams/
 2. [Optional] Create a Private Endpoint for APIM in the `PE Subnet` of the VNet for Azure Databricks public subnet access.
 3. Import Microsoft Foundry APIs into APIM:
     - Under `Client Compatibility` Use OpenAI v1 Option
-    - under APIs --> APIs --> {Foundry API} --> Settings --> API URL Suffix, remove any `/openai/v1` from the API URL Suffix field. 
+    - under APIs --> APIs --> {Foundry API} --> Settings:
+      -  API URL Suffix, remove any `/openai/v1` from the API URL Suffix field. 
+      - Uncheck `Subscription required` to allow calls without a subscription key since we will be using Entra ID for authorization.
 4. under APIs --> APIs --> {Foundry API} --> All operations --> Inbound Processing --> Policies:
    - Add the following policy to the `inbound` section to acquire a token for the Managed Identity and set the Authorization header for the backend API calls to Microsoft Foundry. 
 ```xml
