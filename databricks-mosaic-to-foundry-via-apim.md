@@ -220,7 +220,7 @@ In the NCC:
 
 1. Add a private endpoint rule.
 2. Paste the Azure resource ID of the APIM instance.
-3. Select the APIM private endpoint subresource used by your gateway endpoint.
+3. Enter `Gateway` for Azure Subresource ID.
 4. Save the rule and wait for the status to become `PENDING`.
 
 Then in Azure:
