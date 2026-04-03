@@ -1,15 +1,7 @@
 <policies>
     <inbound>
         <base />
-        <!-- 1. Acquire token for the Managed Identity -->
-        <!-- Use "https://cognitiveservices.azure.com/" for Azure OpenAI models -->
-        <authentication-managed-identity resource="https://cognitiveservices.azure.com/" output-token-variable-name="msi-access-token" ignore-error="false" />
-        <!-- 2. Set the Authorization header for the backend -->
-        <set-header name="Authorization" exists-action="override">
-            <value>@("Bearer " + (string)context.Variables["msi-access-token"])</value>
-        </set-header>
-        <set-backend-service id="apim-generated-policy" backend-id="aif-foundry-ai-endpoint" />
-        <!-- 1️⃣ Validate Entra ID issued JWT -->
+        <!-- 1. Validate the caller token before overwriting Authorization for the backend hop -->
         <validate-jwt header-name="Authorization" failed-validation-httpcode="401" failed-validation-error-message="Unauthorized" require-scheme="Bearer" output-token-variable-name="jwt">
             <openid-config url="https://login.microsoftonline.com/{TENANT_ID}/v2.0/.well-known/openid-configuration" />
             <audiences>
@@ -24,6 +16,14 @@
                 </claim>
             </required-claims>
         </validate-jwt>
+        <!-- 2. Acquire token for the Managed Identity -->
+        <!-- Use "https://cognitiveservices.azure.com/" for Azure OpenAI models -->
+        <authentication-managed-identity resource="https://cognitiveservices.azure.com/" output-token-variable-name="msi-access-token" ignore-error="false" />
+        <!-- 3. Set the Authorization header for the backend -->
+        <set-header name="Authorization" exists-action="override">
+            <value>@("Bearer " + (string)context.Variables["msi-access-token"])</value>
+        </set-header>
+        <set-backend-service id="apim-generated-policy" backend-id="aif-foundry-ai-endpoint" />
     </inbound>
     <backend>
         <base />

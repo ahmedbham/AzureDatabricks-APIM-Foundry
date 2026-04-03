@@ -1,8 +1,34 @@
 # Azure Databricks to Foundry via APIM Setup
 
-This guide covers the Azure Databricks workspace flow for calling Azure AI Foundry through Azure API Management (APIM). In this pattern, APIM fronts the Foundry endpoint and authenticates to the backend by using its managed identity.
+This guide covers the Azure Databricks notebook flow for calling Azure AI Foundry through Azure API Management (APIM). APIM fronts the Foundry endpoint, validates Microsoft Entra tokens from the Databricks-side caller, and then authenticates to the Foundry backend by using its managed identity.
+
+The primary pattern in this document is interactive notebook access that uses an On-Behalf-Of (OBO) token to call an Entra-protected APIM endpoint. The document also keeps the existing app-only alternatives for scheduled or unattended workloads:
+
+- OBO delegated user flow: interactive notebook access on behalf of a signed-in user.
+- Workspace managed identity flow: app-only token issued to the Databricks compute identity.
+- Service principal flow: app-only token issued to a confidential client.
 
 For the Mosaic AI custom serving pattern that uses an APIM subscription key stored in a Databricks secret, see [databricks-mosaic-to-foundry-via-apim.md](databricks-mosaic-to-foundry-via-apim.md).
+
+## What This Guide Implements
+
+- Entra-protected APIM endpoint for Azure Databricks callers.
+- APIM managed identity authentication to Azure AI Foundry.
+- OBO token exchange from a Databricks notebook.
+- Optional app-only access with Databricks managed identity or a service principal.
+- APIM policy examples for validating caller tokens and forwarding requests to Foundry.
+
+## Important OBO Requirement
+
+True OBO requires a user assertion token that represents the signed-in user. In practice, the notebook needs an upstream Entra token from a trusted client or token broker. Azure Databricks notebooks do not mint that upstream Entra user assertion for you automatically.
+
+Use OBO only when all of the following are true:
+
+- The notebook runs in an interactive user context.
+- You already have a user access token issued by Entra ID for an upstream application.
+- The notebook can securely receive that user assertion and exchange it by using a confidential client.
+
+If those conditions are not true, use the managed identity or service principal sections later in this document instead of forcing an OBO design.
 
 ## Architecture Diagram
 
@@ -15,208 +41,316 @@ The architecture diagram is available as an editable draw.io file at [diagrams/a
 
 **Exporting to PNG/SVG:** In draw.io, go to *File -> Export as -> PNG/SVG*. Select "All Pages" and enable "Include a copy of my diagram" to keep it editable.
 
+## Target Flow
+
+For the OBO path, the intended request flow is:
+
+1. A user signs in with Entra ID to an upstream client or broker that can supply a user assertion.
+2. The Databricks notebook uses that user assertion with a confidential client and performs an OBO exchange for the APIM API audience.
+3. The notebook calls APIM with the OBO access token.
+4. APIM validates the delegated token.
+5. APIM acquires its own managed identity token for `https://cognitiveservices.azure.com/`.
+6. APIM forwards the request to the Azure AI Foundry backend.
+
+For app-only alternatives, steps 1 and 2 are replaced by managed identity token acquisition or client credentials token acquisition.
+
+## Prerequisites
+
+- An Azure Databricks workspace.
+- An Azure AI Foundry project or endpoint with a deployed chat-capable model.
+- An APIM instance that can reach Azure AI Foundry.
+- APIM managed identity enabled.
+- Permission to create Entra app registrations or work with an identity admin.
+- Permission to create Databricks secrets if you use the OBO confidential client or service principal options.
+- Network connectivity that allows Databricks to reach the APIM gateway and APIM to reach the Foundry endpoint.
+
 ## VNet
 
 1. Create a VNet with the following subnets:
-   - `PE Subnet` for Private Endpoint.
-   - `APIM Subnet` for APIM subnet delegation. This subnet must have an associated Network Security Group.
+   - `PE Subnet` for private endpoints.
+   - `APIM Subnet` for APIM subnet delegation if you use APIM network integration. This subnet must have an associated Network Security Group.
+2. Ensure your DNS design resolves the APIM gateway hostname and the Foundry private endpoint hostname to the expected private addresses if public access is disabled.
 
 ## Microsoft Foundry
 
-1. Create a Private Endpoint for Microsoft Foundry in the `PE Subnet` of the VNet created in step 1.
+1. Deploy the target chat model in Azure AI Foundry.
+2. Create a private endpoint for Microsoft Foundry in the `PE Subnet` if you want private backend access from APIM.
+3. Grant the APIM managed identity the Azure role required to invoke the Foundry endpoint. For Azure AI services-backed model endpoints, this is typically the appropriate Cognitive Services or Azure AI user role for inference.
+
+## Microsoft Entra ID Configuration
+
+### 1. Create the APIM API app registration
+
+Create an app registration that represents the APIM-protected API. This registration is the audience that Databricks-side callers request.
+
+1. In the Azure portal, go to `Microsoft Entra ID -> App registrations -> New registration`.
+2. Name the app, for example `apim-api-app`.
+3. Note the following values:
+   - `APIM_API_APP_ID`: the application (client) ID.
+   - `TENANT_ID`: the directory (tenant) ID.
+4. Under `Expose an API`, set the Application ID URI to `api://{APIM_API_APP_ID}`.
+5. Add a delegated scope named `user_impersonation`.
+6. Optional, but recommended if you also want app-only callers: create an app role such as `Foundry.Invoke` with allowed member type `Applications`.
+7. Under `Enterprise applications`, find the service principal for this app and note its object ID as `API_SP_ID`.
+
+For delegated OBO calls, APIM validates the `scp` claim and expects `user_impersonation`.
+
+For app-only calls, APIM validates the `roles` claim and expects the app role value such as `Foundry.Invoke`.
+
+### 2. Create the confidential client for OBO
+
+Create a second app registration that the notebook uses to perform the OBO exchange.
+
+1. Create an app registration, for example `adb-obo-client-app`.
+2. Create a client secret or certificate credential.
+3. Add an API permission to `apim-api-app`:
+   - Type: `Delegated permissions`
+   - Permission: `user_impersonation`
+4. Grant admin consent for the delegated permission.
+5. Store the secret or certificate reference securely. In Databricks, use a secret scope rather than hardcoding a secret in the notebook.
 
 ## Azure API Management
 
 1. Create an APIM instance with the following settings:
-   - `Premium V2` SKU
+   - `Premium v2` SKU for private networking scenarios.
    - Network configuration:
      - `Network Integration`
      - Optional: `APIM Subnet` for subnet delegation
    - Managed identity enabled
-2. Optional: Create a Private Endpoint for APIM in the `PE Subnet` of the VNet for Azure Databricks public subnet access.
-3. Import Microsoft Foundry APIs into APIM:
+2. Optional: create a private endpoint for APIM in the `PE Subnet` if Databricks reaches APIM privately.
+3. Import the Microsoft Foundry APIs into APIM:
    - Under `Client Compatibility`, use the OpenAI v1 option.
    - Under `APIs -> APIs -> {Foundry API} -> Settings`:
-     - In `API URL Suffix`, remove any `/openai/v1` fragment.
-     - Uncheck `Subscription required` to allow calls without a subscription key for this workspace-identity flow.
-4. Under `APIs -> APIs -> {Foundry API} -> All operations -> Inbound Processing -> Policies`, add the following policy to the `inbound` section so APIM acquires a managed identity token and forwards it to the Foundry backend:
+     - In `API URL Suffix`, remove any extra `/openai/v1` fragment.
+     - Uncheck `Subscription required` when caller authentication is done with Entra ID instead of APIM subscription keys.
+
+### APIM inbound policy for the OBO flow
+
+Validate the incoming delegated token first. Only after that should APIM overwrite the backend `Authorization` header with its own managed identity token for Foundry.
 
 ```xml
-<!-- 1. Acquire token for the Managed Identity -->
-<!-- Use "https://cognitiveservices.azure.com/" for Azure OpenAI models -->
-<authentication-managed-identity resource="https://cognitiveservices.azure.com/" output-token-variable-name="msi-access-token" ignore-error="false" />
-<!-- 2. Set the Authorization header for the backend -->
-<set-header name="Authorization" exists-action="override">
-    <value>@("Bearer " + (string)context.Variables["msi-access-token"])</value>
-</set-header>
+<policies>
+    <inbound>
+        <base />
+
+        <validate-jwt header-name="Authorization"
+                      require-scheme="Bearer"
+                      failed-validation-httpcode="401"
+                      failed-validation-error-message="Unauthorized"
+                      output-token-variable-name="caller-jwt">
+            <openid-config url="https://login.microsoftonline.com/{TENANT_ID}/v2.0/.well-known/openid-configuration" />
+            <audiences>
+                <audience>{APIM_API_APP_ID}</audience>
+            </audiences>
+            <issuers>
+                <issuer>https://login.microsoftonline.com/{TENANT_ID}/v2.0</issuer>
+            </issuers>
+            <required-claims>
+                <claim name="scp" match="all">
+                    <value>user_impersonation</value>
+                </claim>
+            </required-claims>
+        </validate-jwt>
+
+        <authentication-managed-identity resource="https://cognitiveservices.azure.com/"
+                                         output-token-variable-name="msi-access-token"
+                                         ignore-error="false" />
+
+        <set-header name="Authorization" exists-action="override">
+            <value>@("Bearer " + (string)context.Variables["msi-access-token"])</value>
+        </set-header>
+
+        <set-backend-service id="apim-generated-policy" backend-id="aif-foundry-ai-endpoint" />
+    </inbound>
+    <backend>
+        <base />
+    </backend>
+    <outbound>
+        <base />
+    </outbound>
+    <on-error>
+        <base />
+    </on-error>
+</policies>
 ```
 
-## Azure Databricks
+Notes:
 
-1. Ensure either the APIM private endpoint is created in the same VNet or the APIM subnet is delegated into the same network design used by Azure Databricks.
-2. In a notebook, add the following code to call the APIM endpoint for Microsoft Foundry:
+- The critical ordering is `validate-jwt` first, then `authentication-managed-identity`, then `set-header`. If you overwrite `Authorization` before validation, APIM validates its own backend token instead of the caller token.
+- Use the value that actually appears in the `aud` claim of your APIM access token. For most Entra custom APIs this is the API application's client ID.
+- If you want one API surface to accept both delegated and app-only tokens, either use separate APIM products or operations, or add conditional policy logic. Separate policies are simpler to audit.
 
-```python
-from azure.identity import ManagedIdentityCredential
-import jwt
-import json
-import requests
+### APIM inbound policy for app-only callers
 
-cred = ManagedIdentityCredential()  # uses the identity available on this compute
-token = cred.get_token("api://{APP_ID}/.default").token
-
-apim_url = "https://{your-apim-name}.azure-api.net/foundry/chat/completions"
-headers = {
-  "Authorization": f"Bearer {token}",
-  "Content-Type": "application/json"
-}
-
-data = {
-    "model": "{model-name}",
-    "messages": [
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "what are the top 3 most popular colors"}
-    ]
-}
-
-try:
-    # We add a timeout because VNet/DNS issues can cause long hangs
-    response = requests.post(apim_url, headers=headers, json=data, timeout=15)
-
-    # Check for HTTP errors (401, 404, 500, etc.)
-    response.raise_for_status()
-
-    print("Success! Response from AI Foundry:")
-    print(json.dumps(response.json(), indent=2))
-
-except requests.exceptions.ConnectionError:
-    print("Connection Error: Databricks cannot reach the APIM URL. Check VNet peering and DNS.")
-except requests.exceptions.HTTPError as e:
-    print(f"HTTP Error: {e}")
-    print(f"Backend details: {response.text}")
-except Exception as e:
-    print(f"An unexpected error occurred: {e}")
-```
-
-## Authorize APIM Calls with Azure Databricks Workspace Managed Identity
-
-### Create an Entra app registration for APIM
-
-1. In the Azure portal, navigate to `Azure Active Directory -> App registrations -> New registration`.
-2. Name the app, for example `APIM Access for Databricks`, and register it.
-3. Set `Application ID URI` to `api://{client-id}`, where `{client-id}` is the application client ID for the app registration. This is the audience Databricks will request.
-4. Note the `Application (client) ID` as `APP_ID` and the `Directory (tenant) ID` as `TENANT_ID`.
-5. Create app roles for the app registration:
-   - Under the app registration, open `App roles` and choose `Create app role`.
-   - Set allowed member types to `Application` and record both the role value `APP_ROLE_VALUE` and the app role ID `APP_ROLE_ID`.
-6. Under `Enterprise applications`, find the app registration created in step 1 and note its object ID as `API_SP_ID`.
-
-### Assign the app role to the Azure Databricks workspace managed identity
-
-1. Option A:
-   - In the Azure portal, navigate to `Managed Identities`.
-   - Find the managed identity named `dbmanagedidentity`.
-   - Note its object ID as `CALLER_OID`.
-2. Option B, if the managed identity is not visible in the portal:
-
-```python
-import jwt
-
-from azure.identity import ManagedIdentityCredential
-
-credential = ManagedIdentityCredential()
-access_token = credential.get_token(API_AUDIENCE)
-
-token = access_token.token
-
-decoded = jwt.decode(token, options={"verify_signature": False})
-
-print(decoded.get("oid"))
-```
-
-3. Note the output from the notebook as `CALLER_OID`.
-4. In Cloud Shell, assign the app role to the managed identity:
-
-```bash
-az rest \
-  --method POST \
-  --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$CALLER_OID/appRoleAssignments" \
-  --headers "Content-Type=application/json" \
-  --body "{\"principalId\":\"$CALLER_OID\",\"resourceId\":\"$API_SP_OID\",\"appRoleId\":\"$APP_ROLE_ID\"}"
-```
-
-### Configure APIM to validate the token from Azure Databricks
-
-1. In the APIM instance, open the API for Microsoft Foundry.
-2. Update the inbound policy to validate the Entra token and enforce the app role assignment:
+If the caller is a managed identity or service principal, validate the app role instead of the delegated scope:
 
 ```xml
-<!-- 1. Validate Entra ID issued JWT -->
-<validate-jwt header-name="Authorization" failed-validation-httpcode="401" failed-validation-error-message="Unauthorized" require-scheme="Bearer" output-token-variable-name="jwt">
+<validate-jwt header-name="Authorization"
+              require-scheme="Bearer"
+              failed-validation-httpcode="401"
+              failed-validation-error-message="Unauthorized"
+              output-token-variable-name="caller-jwt">
     <openid-config url="https://login.microsoftonline.com/{TENANT_ID}/v2.0/.well-known/openid-configuration" />
     <audiences>
-        <audience>{APP_ID}</audience>
+        <audience>{APIM_API_APP_ID}</audience>
     </audiences>
     <issuers>
         <issuer>https://login.microsoftonline.com/{TENANT_ID}/v2.0</issuer>
     </issuers>
     <required-claims>
         <claim name="roles" match="any">
-            <value>{APP_ROLE_VALUE}</value>
+            <value>Foundry.Invoke</value>
         </claim>
     </required-claims>
 </validate-jwt>
 ```
 
-### Test the setup from Azure Databricks
+## Azure Databricks Notebook: OBO Flow
+
+This sample shows the notebook performing an OBO exchange and then calling APIM with the resulting delegated access token.
+
+```python
+%pip install msal requests
+dbutils.library.restartPython()
+```
+
+```python
+import json
+import msal
+import requests
+
+TENANT_ID = "<tenant-id>"
+APIM_API_APP_ID = "<apim-api-app-client-id>"
+OBO_CLIENT_APP_ID = "<adb-obo-client-app-client-id>"
+APIM_URL = "https://<your-apim-name>.azure-api.net/foundry/chat/completions"
+
+CLIENT_SECRET = dbutils.secrets.get(
+    scope="<scope-name>",
+    key="<adb-obo-client-app-secret-key>",
+)
+
+def get_user_assertion() -> str:
+    """
+    Supply an upstream Entra user token here.
+
+    In production, obtain this from a trusted client or token broker that already
+    authenticated the user. A Databricks notebook does not mint this assertion by itself.
+    This sample uses a widget only to make the dependency explicit.
+    """
+    token = dbutils.widgets.get("user_assertion")
+    if not token:
+        raise ValueError("The user_assertion widget is empty.")
+    return token
+
+app = msal.ConfidentialClientApplication(
+    client_id=OBO_CLIENT_APP_ID,
+    authority=f"https://login.microsoftonline.com/{TENANT_ID}",
+    client_credential=CLIENT_SECRET,
+)
+
+obo_result = app.acquire_token_on_behalf_of(
+    user_assertion=get_user_assertion(),
+    scopes=[f"api://{APIM_API_APP_ID}/user_impersonation"],
+)
+
+if "access_token" not in obo_result:
+    raise RuntimeError(
+        "OBO token acquisition failed: "
+        f"{obo_result.get('error')} - {obo_result.get('error_description')}"
+    )
+
+apim_token = obo_result["access_token"]
+
+payload = {
+    "model": "<model-name>",
+    "messages": [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "What are the top 3 most popular colors?"},
+    ],
+}
+
+response = requests.post(
+    APIM_URL,
+    headers={
+        "Authorization": f"Bearer {apim_token}",
+        "Content-Type": "application/json",
+    },
+    json=payload,
+    timeout=15,
+)
+
+response.raise_for_status()
+print(json.dumps(response.json(), indent=2))
+```
+
+Use this OBO sample only when the notebook truly acts on behalf of a user. For scheduled jobs, job clusters, or service-to-service calls, use one of the app-only patterns below.
+
+## Azure Databricks Notebook: Workspace Managed Identity Flow
+
+This repo already includes a workspace managed identity sample in [diagrams/code-samples/databricks-workspace-notebook.py](diagrams/code-samples/databricks-workspace-notebook.py). Use this pattern when the Databricks compute identity is the caller.
+
+### Assign the app role to the Azure Databricks managed identity
+
+1. In the Azure portal, locate the Databricks managed identity and note its object ID as `CALLER_OID`.
+2. If needed, decode an access token in a notebook to confirm the object ID:
+
+```python
+import jwt
+from azure.identity import ManagedIdentityCredential
+
+credential = ManagedIdentityCredential()
+access_token = credential.get_token("api://{APIM_API_APP_ID}/.default")
+decoded = jwt.decode(access_token.token, options={"verify_signature": False})
+
+print(decoded.get("oid"))
+```
+
+3. Assign the app role to the managed identity:
+
+```bash
+az rest \
+  --method POST \
+  --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$CALLER_OID/appRoleAssignments" \
+  --headers "Content-Type=application/json" \
+  --body "{\"principalId\":\"$CALLER_OID\",\"resourceId\":\"$API_SP_ID\",\"appRoleId\":\"$APP_ROLE_ID\"}"
+```
+
+### Call APIM from the notebook with managed identity
 
 ```python
 from azure.identity import ManagedIdentityCredential
-import jwt
 import json
 import requests
 
-cred = ManagedIdentityCredential()  # uses the identity available on this compute
-token = cred.get_token("api://{APP_ID}/.default").token
+cred = ManagedIdentityCredential()
+token = cred.get_token("api://{APIM_API_APP_ID}/.default").token
 
 apim_url = "https://{your-apim-name}.azure-api.net/foundry/chat/completions"
 headers = {
-  "Authorization": f"Bearer {token}",
-  "Content-Type": "application/json"
+    "Authorization": f"Bearer {token}",
+    "Content-Type": "application/json",
 }
 
 data = {
     "model": "{model-name}",
     "messages": [
         {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "what are the top 3 most popular colors"}
-    ]
+        {"role": "user", "content": "What are the top 3 most popular colors?"},
+    ],
 }
 
-try:
-    # We add a timeout because VNet/DNS issues can cause long hangs
-    response = requests.post(apim_url, headers=headers, json=data, timeout=15)
-
-    # Check for HTTP errors (401, 404, 500, etc.)
-    response.raise_for_status()
-
-    print("Success! Response from AI Foundry:")
-    print(json.dumps(response.json(), indent=2))
-
-except requests.exceptions.ConnectionError:
-    print("Connection Error: Databricks cannot reach the APIM URL. Check VNet peering and DNS.")
-except requests.exceptions.HTTPError as e:
-    print(f"HTTP Error: {e}")
-    print(f"Backend details: {response.text}")
-except Exception as e:
-    print(f"An unexpected error occurred: {e}")
+response = requests.post(apim_url, headers=headers, json=data, timeout=15)
+response.raise_for_status()
+print(json.dumps(response.json(), indent=2))
 ```
 
 ## Authorize APIM Calls with a Service Principal
 
-### Create an Entra app registration for the service principal
+Use this pattern when the Databricks notebook or job runs under a dedicated confidential client instead of a managed identity.
 
-Create an app registration for the caller service principal, named `adb-client-app` in this example.
+### Create the caller app registration
+
+Create an app registration for the caller service principal, named `adb-client-app` in this example, and store its secret in a Databricks secret scope.
 
 ### Assign the app role to the service principal
 
@@ -229,13 +363,13 @@ CALLER_OID=$(az ad sp list \
 echo $CALLER_OID
 ```
 
-2. Get `API_SP_OID` for `apim-api-app`:
+2. Get `API_SP_ID` for `apim-api-app`:
 
 ```bash
-API_SP_OID=$(az ad sp list \
+API_SP_ID=$(az ad sp list \
   --filter "displayName eq 'apim-api-app'" \
   --query "[0].id" -o tsv)
-echo $API_SP_OID
+echo $API_SP_ID
 ```
 
 3. Perform the app role assignment:
@@ -245,44 +379,84 @@ az rest \
   --method POST \
   --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$CALLER_OID/appRoleAssignments" \
   --headers "Content-Type=application/json" \
-  --body "{
-    \"principalId\": \"$CALLER_OID\",
-    \"resourceId\": \"$API_SP_OID\",
-    \"appRoleId\": \"$APP_ROLE_ID\"
-  }"
+  --body "{\"principalId\":\"$CALLER_OID\",\"resourceId\":\"$API_SP_ID\",\"appRoleId\":\"$APP_ROLE_ID\"}"
 ```
 
-### Test the setup from Azure Databricks
+### Call APIM from the notebook with a service principal
 
 ```python
-%pip install msal
+%pip install msal requests
 dbutils.library.restartPython()
+```
+
+```python
+import json
 import msal
 import requests
 
-TENANT_ID = "<your-tenant-id>"
+TENANT_ID = "<tenant-id>"
 ADB_CLIENT_APP_ID = "<adb-client-app-client-id>"
-APIM_API_APP_CLIENT_ID = "<apim-api-app-client-id>"
-
-SCOPE = [f"api://{APIM_API_APP_CLIENT_ID}/.default"]
-
-CLIENT_SECRET = dbutils.secrets.get(scope="<scope-name>", key="<adb-client-app-client-secret-key>")
-
-AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
+APIM_API_APP_ID = "<apim-api-app-client-id>"
+CLIENT_SECRET = dbutils.secrets.get(
+    scope="<scope-name>",
+    key="<adb-client-app-client-secret-key>",
+)
 
 app = msal.ConfidentialClientApplication(
     client_id=ADB_CLIENT_APP_ID,
-    authority=AUTHORITY,
-    client_credential=CLIENT_SECRET
+    authority=f"https://login.microsoftonline.com/{TENANT_ID}",
+    client_credential=CLIENT_SECRET,
 )
 
-result = app.acquire_token_for_client(scopes=SCOPE)
+result = app.acquire_token_for_client(
+    scopes=[f"api://{APIM_API_APP_ID}/.default"],
+)
 
 if "access_token" not in result:
-    raise Exception(
-        f"Token acquisition failed: {result.get('error')} - {result.get('error_description')}"
+    raise RuntimeError(
+        "Token acquisition failed: "
+        f"{result.get('error')} - {result.get('error_description')}"
     )
 
-access_token = result["access_token"]
-print("Got access token (length):", len(access_token))
+response = requests.post(
+    "https://{your-apim-name}.azure-api.net/foundry/chat/completions",
+    headers={
+        "Authorization": f"Bearer {result['access_token']}",
+        "Content-Type": "application/json",
+    },
+    json={
+        "model": "{model-name}",
+        "messages": [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "What are the top 3 most popular colors?"},
+        ],
+    },
+    timeout=15,
+)
+
+response.raise_for_status()
+print(json.dumps(response.json(), indent=2))
 ```
+
+## Validate the End-to-End Flow
+
+For the OBO flow, validate the following sequence:
+
+1. The notebook receives a valid user assertion from an upstream trusted client or token broker.
+2. The notebook exchanges that assertion for an APIM access token by using `acquire_token_on_behalf_of`.
+3. APIM accepts the delegated token and validates the `scp` claim.
+4. APIM acquires a managed identity token for `https://cognitiveservices.azure.com/`.
+5. APIM forwards the request to Azure AI Foundry.
+6. The Foundry response returns through APIM to the notebook.
+
+For app-only flows, the same backend steps apply after the caller obtains a token with managed identity or client credentials.
+
+## Troubleshooting
+
+- `401 Unauthorized` at APIM before the backend call: inspect the caller token and confirm the `aud`, `iss`, and either `scp` or `roles` claims match the APIM policy.
+- `scp` missing from an OBO token: the notebook likely did not receive a delegated user assertion, or the OBO client app does not have the `user_impersonation` delegated permission.
+- `roles` missing from an app-only token: the managed identity or service principal does not have the APIM API app role assignment.
+- `AADSTS50013` or similar OBO exchange errors: the user assertion was issued for the wrong upstream application, expired, or the OBO client app is missing consent.
+- `403` or backend authorization failures at Foundry: confirm the APIM managed identity has the required Azure AI or Cognitive Services data-plane access to the Foundry endpoint.
+- APIM validates the wrong token: make sure `validate-jwt` runs before APIM overwrites the `Authorization` header for the backend call.
+- Connection timeouts from Databricks: verify private endpoint approval, VNet routing, DNS resolution, and any APIM gateway network restrictions.
