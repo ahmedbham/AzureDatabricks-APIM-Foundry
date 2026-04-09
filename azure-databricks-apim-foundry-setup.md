@@ -90,12 +90,28 @@ Create an app registration that represents the APIM-protected API. This registra
    - `TENANT_ID`: the directory (tenant) ID.
 4. Under `Expose an API`, set the Application ID URI to `api://{APIM_API_APP_ID}`.
 5. Add a delegated scope named `user_impersonation`.
-6. Optional, but recommended if you also want app-only callers: create an app role such as `Foundry.Invoke` with allowed member type `Applications`.
+6. Recommended: create an app role such as `Foundry.Invoke`.
+    - For delegated user flows, allow member types `Users/Groups` and assign the role to the specific Entra groups that are allowed to call APIM.
+    - For app-only flows, allow member type `Applications` if you also want service principals or managed identities to call the same API surface.
 7. Under `Enterprise applications`, find the service principal for this app and note its object ID as `API_SP_ID`.
 
 For delegated OBO calls, APIM validates the `scp` claim and expects `user_impersonation`.
 
+For delegated group-restricted OBO calls, APIM should validate both the delegated scope and the app role claim. The role is assigned to Entra groups through the enterprise application, so only members of those groups receive the role in their token.
+
 For app-only calls, APIM validates the `roles` claim and expects the app role value such as `Foundry.Invoke`.
+
+### Delegated group or app-role restriction
+
+If you need to restrict notebook access to specific Entra groups, prefer app roles assigned to groups over direct `groups` claim checks.
+
+1. In the APIM API app registration, define an app role such as `Foundry.Invoke` with allowed member type `Users/Groups`.
+2. In `Enterprise applications -> apim-api-app -> Properties`, set `Assignment required?` to `Yes`.
+3. In `Users and groups`, assign only the allowed Entra groups to the app role.
+4. Keep the delegated permission `user_impersonation` on the client application.
+5. In APIM, require both `scp=user_impersonation` and `roles=Foundry.Invoke`.
+
+This pattern is more reliable than checking raw `groups` claims directly because it avoids common group overage issues in large tenants and is easier to audit.
 
 ### 2. Create the confidential client for OBO
 
@@ -174,10 +190,64 @@ Validate the incoming delegated token first. Only after that should APIM overwri
 </policies>
 ```
 
+### APIM inbound policy for delegated users restricted by Entra groups
+
+If only specific user groups should be allowed through the delegated notebook flow, require the delegated scope and an app role claim in the same token. The app role is assigned to the allowed Entra groups on the enterprise application.
+
+```xml
+<policies>
+    <inbound>
+        <base />
+
+        <validate-jwt header-name="Authorization"
+                      require-scheme="Bearer"
+                      failed-validation-httpcode="401"
+                      failed-validation-error-message="Unauthorized"
+                      output-token-variable-name="caller-jwt">
+            <openid-config url="https://login.microsoftonline.com/{TENANT_ID}/v2.0/.well-known/openid-configuration" />
+            <audiences>
+                <audience>{APIM_API_APP_ID}</audience>
+            </audiences>
+            <issuers>
+                <issuer>https://login.microsoftonline.com/{TENANT_ID}/v2.0</issuer>
+            </issuers>
+            <required-claims>
+                <claim name="scp" match="all">
+                    <value>user_impersonation</value>
+                </claim>
+                <claim name="roles" match="any">
+                    <value>Foundry.Invoke</value>
+                </claim>
+            </required-claims>
+        </validate-jwt>
+
+        <authentication-managed-identity resource="https://cognitiveservices.azure.com/"
+                                         output-token-variable-name="msi-access-token"
+                                         ignore-error="false" />
+
+        <set-header name="Authorization" exists-action="override">
+            <value>@("Bearer " + (string)context.Variables["msi-access-token"])</value>
+        </set-header>
+
+        <set-backend-service id="apim-generated-policy" backend-id="aif-foundry-ai-endpoint" />
+    </inbound>
+    <backend>
+        <base />
+    </backend>
+    <outbound>
+        <base />
+    </outbound>
+    <on-error>
+        <base />
+    </on-error>
+</policies>
+```
+
 Notes:
 
 - The critical ordering is `validate-jwt` first, then `authentication-managed-identity`, then `set-header`. If you overwrite `Authorization` before validation, APIM validates its own backend token instead of the caller token.
 - Use the value that actually appears in the `aud` claim of your APIM access token. For most Entra custom APIs this is the API application's client ID.
+- For delegated user restrictions, prefer app roles assigned to groups over validating raw `groups` claims directly. Raw group claims can hit Entra group overage limits and may not be present in the token.
 - If you want one API surface to accept both delegated and app-only tokens, either use separate APIM products or operations, or add conditional policy logic. Separate policies are simpler to audit.
 
 ### APIM inbound policy for app-only callers

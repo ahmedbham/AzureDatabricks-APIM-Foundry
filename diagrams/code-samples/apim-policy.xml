@@ -1,18 +1,22 @@
 <policies>
     <inbound>
         <base />
-        <!-- 1. Validate the caller token before overwriting Authorization for the backend hop -->
+        <!-- 1. Validate the delegated caller token before overwriting Authorization for the backend hop -->
+        <!-- Require both the delegated scope and an app role that is assigned to the allowed Entra groups -->
         <validate-jwt header-name="Authorization" failed-validation-httpcode="401" failed-validation-error-message="Unauthorized" require-scheme="Bearer" output-token-variable-name="jwt">
             <openid-config url="https://login.microsoftonline.com/{TENANT_ID}/v2.0/.well-known/openid-configuration" />
             <audiences>
-                <audience>{APP_ID}</audience>
+                <audience>{APIM_API_APP_ID}</audience>
             </audiences>
             <issuers>
                 <issuer>https://login.microsoftonline.com/{TENANT_ID}/v2.0</issuer>
             </issuers>
             <required-claims>
+                <claim name="scp" match="all">
+                    <value>user_impersonation</value>
+                </claim>
                 <claim name="roles" match="any">
-                    <value>{APP_ROLE_VALUE}</value>
+                    <value>{DELEGATED_GROUP_APP_ROLE_VALUE}</value>
                 </claim>
             </required-claims>
         </validate-jwt>
